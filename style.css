@@ -261,10 +261,19 @@ header {
   gap: 8px;
   padding: 9px 14px;
   border-bottom: 1px solid var(--line);
-  transition: background .1s;
+  transition: background .1s, opacity .15s;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 .task:last-child { border-bottom: none; }
 .task:hover { background: var(--add-bg); }
+.task:active { cursor: grabbing; }
+
+.col.drag-over {
+  outline: 2px solid var(--muted);
+  outline-offset: -2px;
+}
 
 .task input[type="checkbox"] {
   margin-top: 1px;

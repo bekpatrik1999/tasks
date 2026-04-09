@@ -185,6 +185,7 @@ function renderBoard() {
             </div>
           </div>
           <button class="task-del" data-id="${task.id}">×</button>`;
+        initDrag(row, task.id);
         taskList.appendChild(row);
       });
     }
@@ -279,6 +280,74 @@ function attachEvents() {
       e.stopPropagation();
       await tasksCol.doc(btn.dataset.id).delete();
     };
+  });
+}
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+
+let dragState = null;
+
+function initDrag(row, taskId) {
+  row.addEventListener('pointerdown', e => {
+    if (e.target.closest('input[type="checkbox"]') || e.target.closest('.task-del')) return;
+    e.preventDefault();
+
+    const rect = row.getBoundingClientRect();
+    const ghost = row.cloneNode(true);
+    ghost.style.cssText = `
+      position:fixed; z-index:1000; pointer-events:none;
+      width:${rect.width}px; left:${rect.left}px; top:${rect.top}px;
+      opacity:.85; box-shadow:0 6px 24px rgba(0,0,0,.18);
+      border-radius:8px; background:var(--col);
+    `;
+    document.body.appendChild(ghost);
+    row.style.opacity = '.25';
+
+    dragState = {
+      taskId, ghost, row,
+      ox: e.clientX - rect.left,
+      oy: e.clientY - rect.top,
+    };
+    row.setPointerCapture(e.pointerId);
+  });
+
+  row.addEventListener('pointermove', e => {
+    if (!dragState || dragState.taskId !== taskId) return;
+    dragState.ghost.style.left = (e.clientX - dragState.ox) + 'px';
+    dragState.ghost.style.top  = (e.clientY - dragState.oy) + 'px';
+
+    document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
+    dragState.ghost.style.display = 'none';
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.col');
+    dragState.ghost.style.display = '';
+    if (target) target.classList.add('drag-over');
+  });
+
+  row.addEventListener('pointerup', async e => {
+    if (!dragState || dragState.taskId !== taskId) return;
+
+    dragState.ghost.style.display = 'none';
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.col');
+    dragState.ghost.style.display = '';
+
+    const newCol = target?.dataset.col;
+    dragState.ghost.remove();
+    dragState.row.style.opacity = '';
+    document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
+
+    const oldCol = tasks.find(t => t.id === taskId)?.col;
+    if (newCol && newCol !== oldCol) {
+      await tasksCol.doc(taskId).update({ col: newCol });
+    }
+    dragState = null;
+  });
+
+  row.addEventListener('pointercancel', () => {
+    if (!dragState || dragState.taskId !== taskId) return;
+    dragState.ghost.remove();
+    dragState.row.style.opacity = '';
+    document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
+    dragState = null;
   });
 }
 
