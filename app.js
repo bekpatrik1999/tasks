@@ -43,9 +43,10 @@ const tasksCol = db.collection('tasks');
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let tasks = [];
-let openCol = null;
-let selUrg  = 'now';
-let selTime = '1h';
+let openCol    = null;
+let openTaskId = null;
+let selUrg     = 'now';
+let selTime    = '1h';
 
 const getKey = () => localStorage.getItem(AK) || '';
 
@@ -281,6 +282,149 @@ function attachEvents() {
       await tasksCol.doc(btn.dataset.id).delete();
     };
   });
+
+  // Open task modal
+  document.querySelectorAll('.task-body').forEach(body => {
+    body.onclick = () => {
+      const id = body.closest('.task').dataset.id;
+      openTaskId = id;
+      renderModal(id);
+    };
+  });
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+
+function renderModal(taskId) {
+  document.querySelector('.modal-overlay')?.remove();
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  const subtasks = task.subtasks || [];
+  const doneCount = subtasks.filter(s => s.done).length;
+  const pct = subtasks.length ? Math.round(doneCount / subtasks.length * 100) : 0;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-head">
+        <input class="modal-title" placeholder="Название">
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-tags">
+        <div class="tag-row">
+          <label>Срочность</label>
+          ${URG.map(u => `<button class="pick ${task.urg === u.id ? 'sel' : ''}" data-murg="${u.id}">${u.label}</button>`).join('')}
+        </div>
+        <div class="tag-row">
+          <label>Время</label>
+          ${TIME.map(t => `<button class="pick ${task.time === t.id ? 'sel' : ''}" data-mtime="${t.id}">${t.label}</button>`).join('')}
+        </div>
+      </div>
+      <div class="modal-section">
+        <label class="modal-label">Описание</label>
+        <textarea class="modal-desc" placeholder="Добавьте описание…"></textarea>
+      </div>
+      <div class="modal-section">
+        <label class="modal-label">
+          Подзадачи
+          ${subtasks.length ? `<span class="subtask-progress">${doneCount}/${subtasks.length}</span>` : ''}
+        </label>
+        ${subtasks.length ? `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>` : ''}
+        <div class="subtask-list">
+          ${subtasks.map(s => `
+            <div class="subtask" data-sid="${s.id}">
+              <input type="checkbox" ${s.done ? 'checked' : ''}>
+              <span class="subtask-text">${escHtml(s.text)}</span>
+              <button class="subtask-del">×</button>
+            </div>`).join('')}
+        </div>
+        <div class="subtask-add-row">
+          <input class="subtask-input" placeholder="Добавить подзадачу…" autocomplete="off">
+          <button class="subtask-add-btn">+</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-save">Сохранить</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  // Set values safely (avoids XSS in attribute)
+  overlay.querySelector('.modal-title').value = task.text;
+  overlay.querySelector('.modal-desc').value  = task.description || '';
+
+  let localUrg  = task.urg;
+  let localTime = task.time;
+
+  overlay.querySelectorAll('[data-murg]').forEach(btn => {
+    btn.onclick = () => {
+      localUrg = btn.dataset.murg;
+      overlay.querySelectorAll('[data-murg]').forEach(b => b.classList.toggle('sel', b.dataset.murg === localUrg));
+    };
+  });
+
+  overlay.querySelectorAll('[data-mtime]').forEach(btn => {
+    btn.onclick = () => {
+      localTime = btn.dataset.mtime;
+      overlay.querySelectorAll('[data-mtime]').forEach(b => b.classList.toggle('sel', b.dataset.mtime === localTime));
+    };
+  });
+
+  overlay.querySelectorAll('.subtask input[type="checkbox"]').forEach(cb => {
+    cb.onchange = async () => {
+      const sid = Number(cb.closest('.subtask').dataset.sid);
+      const cur = tasks.find(t => t.id === taskId);
+      if (!cur) return;
+      const updated = (cur.subtasks || []).map(s => s.id === sid ? {...s, done: cb.checked} : s);
+      await tasksCol.doc(taskId).update({ subtasks: updated });
+    };
+  });
+
+  overlay.querySelectorAll('.subtask-del').forEach(btn => {
+    btn.onclick = async () => {
+      const sid = Number(btn.closest('.subtask').dataset.sid);
+      const cur = tasks.find(t => t.id === taskId);
+      if (!cur) return;
+      await tasksCol.doc(taskId).update({ subtasks: (cur.subtasks || []).filter(s => s.id !== sid) });
+    };
+  });
+
+  const subtaskInput = overlay.querySelector('.subtask-input');
+  const addSubtask = async () => {
+    const text = subtaskInput.value.trim();
+    if (!text) return;
+    const cur = tasks.find(t => t.id === taskId);
+    if (!cur) return;
+    const updated = [...(cur.subtasks || []), { id: Date.now(), text, done: false }];
+    await tasksCol.doc(taskId).update({ subtasks: updated });
+    subtaskInput.value = '';
+    subtaskInput.focus();
+  };
+  overlay.querySelector('.subtask-add-btn').onclick = addSubtask;
+  subtaskInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSubtask(); });
+
+  overlay.querySelector('.modal-save').onclick = async () => {
+    const newText = overlay.querySelector('.modal-title').value.trim();
+    const newDesc = overlay.querySelector('.modal-desc').value;
+    if (!newText) return;
+    let text = newText;
+    if (newText !== task.text && getKey()) {
+      toast('✨ Улучшаю…');
+      text = await aiImprove(newText);
+      if (text !== newText) toast(`✨ «${text}»`);
+    }
+    await tasksCol.doc(taskId).update({ text, urg: localUrg, time: localTime, description: newDesc });
+    closeModal();
+  };
+
+  const closeModal = () => { overlay.remove(); openTaskId = null; };
+  overlay.querySelector('.modal-close').onclick = closeModal;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  const onEsc = e => { if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', onEsc); } };
+  document.addEventListener('keydown', onEsc);
 }
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
@@ -365,4 +509,11 @@ function initDrag(row, taskId) {
 tasksCol.orderBy('createdAt').onSnapshot(snapshot => {
   tasks = snapshot.docs.map(doc => doc.data());
   renderBoard();
+  if (openTaskId) {
+    const titleVal = document.querySelector('.modal-title')?.value;
+    const descVal  = document.querySelector('.modal-desc')?.value;
+    renderModal(openTaskId);
+    if (titleVal !== undefined) document.querySelector('.modal-title').value = titleVal;
+    if (descVal  !== undefined) document.querySelector('.modal-desc').value  = descVal;
+  }
 });
