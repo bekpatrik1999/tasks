@@ -429,7 +429,26 @@ function renderModal(taskId) {
     closeModal();
   };
 
-  const closeModal = () => { overlay.remove(); openTaskId = null; };
+  const closeModal = () => {
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', vpResize);
+      window.visualViewport.removeEventListener('scroll', vpResize);
+    }
+    overlay.remove();
+    openTaskId = null;
+  };
+
+  // Adjust overlay height when iOS keyboard appears/disappears
+  const vpResize = () => {
+    if (!window.visualViewport) return;
+    overlay.style.height = window.visualViewport.height + 'px';
+    overlay.style.top    = window.visualViewport.offsetTop + 'px';
+  };
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', vpResize);
+    window.visualViewport.addEventListener('scroll', vpResize);
+  }
+
   overlay.querySelector('.modal-close').onclick = closeModal;
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
   const onEsc = e => { if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', onEsc); } };
