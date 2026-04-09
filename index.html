@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Задачи</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+
+    <header>
+      <span class="logo">Задачи</span>
+      <div class="header-right">
+        <button id="key-btn" class="icon-btn" title="API ключ">⚿</button>
+        <button id="theme-btn" class="icon-btn" title="Тема">◐</button>
+      </div>
+    </header>
+
+    <div id="key-bar" class="key-bar hidden">
+      <input id="key-input" type="password" placeholder="sk-ant-...">
+      <button id="key-save">Сохранить</button>
+    </div>
+
+    <main class="board" id="board"></main>
+
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
