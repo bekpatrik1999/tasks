@@ -490,7 +490,7 @@ function initDrag(row, taskId) {
     document.addEventListener('mouseup', onUp, { once: true });
   });
 
-  // Touch (iPad / iPhone) — distinguish tap (open modal) from drag (move task)
+  // Touch (iPad / iPhone) — tap opens modal, long-press+move drags
   row.addEventListener('touchstart', e => {
     if (e.target.closest('input') || e.target.closest('.task-del')) return;
     const t0 = e.touches[0];
@@ -507,7 +507,16 @@ function initDrag(row, taskId) {
     };
     const onEnd = e => {
       row.removeEventListener('touchmove', onMove);
-      if (dragging) { const t = e.changedTouches[0]; endDrag(t.clientX, t.clientY); }
+      if (dragging) {
+        const t = e.changedTouches[0];
+        endDrag(t.clientX, t.clientY);
+      } else {
+        // tap — open modal directly (don't rely on synthetic click)
+        if (!e.target.closest('input') && !e.target.closest('.task-del')) {
+          openTaskId = taskId;
+          renderModal(taskId);
+        }
+      }
     };
     const onCancel = () => { row.removeEventListener('touchmove', onMove); if (dragging) cancelDrag(); };
     row.addEventListener('touchmove', onMove, { passive: false });
