@@ -490,18 +490,30 @@ function initDrag(row, taskId) {
     document.addEventListener('mouseup', onUp, { once: true });
   });
 
-  // Touch (iPad / iPhone)
+  // Touch (iPad / iPhone) — distinguish tap (open modal) from drag (move task)
   row.addEventListener('touchstart', e => {
     if (e.target.closest('input') || e.target.closest('.task-del')) return;
-    e.preventDefault();
-    const t = e.touches[0];
-    startDrag(t.clientX, t.clientY, row, taskId);
-    const onMove = e => { e.preventDefault(); const t = e.touches[0]; moveDrag(t.clientX, t.clientY); };
-    const onEnd  = e => { const t = e.changedTouches[0]; endDrag(t.clientX, t.clientY); row.removeEventListener('touchmove', onMove); };
+    const t0 = e.touches[0];
+    const sx = t0.clientX, sy = t0.clientY;
+    let dragging = false;
+
+    const onMove = e => {
+      const t = e.touches[0];
+      if (!dragging && Math.hypot(t.clientX - sx, t.clientY - sy) > 8) {
+        dragging = true;
+        startDrag(sx, sy, row, taskId);
+      }
+      if (dragging) { e.preventDefault(); moveDrag(t.clientX, t.clientY); }
+    };
+    const onEnd = e => {
+      row.removeEventListener('touchmove', onMove);
+      if (dragging) { const t = e.changedTouches[0]; endDrag(t.clientX, t.clientY); }
+    };
+    const onCancel = () => { row.removeEventListener('touchmove', onMove); if (dragging) cancelDrag(); };
     row.addEventListener('touchmove', onMove, { passive: false });
-    row.addEventListener('touchend',  onEnd,  { once: true });
-    row.addEventListener('touchcancel', cancelDrag, { once: true });
-  }, { passive: false });
+    row.addEventListener('touchend',   onEnd,   { once: true });
+    row.addEventListener('touchcancel', onCancel, { once: true });
+  }, { passive: true });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
