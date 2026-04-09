@@ -287,68 +287,77 @@ function attachEvents() {
 
 let dragState = null;
 
+function startDrag(cx, cy, row, taskId) {
+  const rect = row.getBoundingClientRect();
+  const ghost = row.cloneNode(true);
+  ghost.style.cssText = `
+    position:fixed; z-index:1000; pointer-events:none;
+    width:${rect.width}px; left:${rect.left}px; top:${rect.top}px;
+    opacity:.85; box-shadow:0 6px 24px rgba(0,0,0,.18);
+    border-radius:8px; background:var(--col);
+  `;
+  document.body.appendChild(ghost);
+  row.style.opacity = '.25';
+  dragState = { taskId, ghost, row, ox: cx - rect.left, oy: cy - rect.top };
+}
+
+function moveDrag(cx, cy) {
+  if (!dragState) return;
+  dragState.ghost.style.left = (cx - dragState.ox) + 'px';
+  dragState.ghost.style.top  = (cy - dragState.oy) + 'px';
+  document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
+  dragState.ghost.style.display = 'none';
+  const target = document.elementFromPoint(cx, cy)?.closest('.col');
+  dragState.ghost.style.display = '';
+  if (target) target.classList.add('drag-over');
+}
+
+async function endDrag(cx, cy) {
+  if (!dragState) return;
+  dragState.ghost.style.display = 'none';
+  const target = document.elementFromPoint(cx, cy)?.closest('.col');
+  dragState.ghost.style.display = '';
+  const newCol = target?.dataset.col;
+  dragState.ghost.remove();
+  dragState.row.style.opacity = '';
+  document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
+  const oldCol = tasks.find(t => t.id === dragState.taskId)?.col;
+  if (newCol && newCol !== oldCol) await tasksCol.doc(dragState.taskId).update({ col: newCol });
+  dragState = null;
+}
+
+function cancelDrag() {
+  if (!dragState) return;
+  dragState.ghost.remove();
+  dragState.row.style.opacity = '';
+  document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
+  dragState = null;
+}
+
 function initDrag(row, taskId) {
-  row.addEventListener('pointerdown', e => {
-    if (e.target.closest('input[type="checkbox"]') || e.target.closest('.task-del')) return;
+  // Mouse
+  row.addEventListener('mousedown', e => {
+    if (e.target.closest('input') || e.target.closest('.task-del')) return;
     e.preventDefault();
-
-    const rect = row.getBoundingClientRect();
-    const ghost = row.cloneNode(true);
-    ghost.style.cssText = `
-      position:fixed; z-index:1000; pointer-events:none;
-      width:${rect.width}px; left:${rect.left}px; top:${rect.top}px;
-      opacity:.85; box-shadow:0 6px 24px rgba(0,0,0,.18);
-      border-radius:8px; background:var(--col);
-    `;
-    document.body.appendChild(ghost);
-    row.style.opacity = '.25';
-
-    dragState = {
-      taskId, ghost, row,
-      ox: e.clientX - rect.left,
-      oy: e.clientY - rect.top,
-    };
-    row.setPointerCapture(e.pointerId);
+    startDrag(e.clientX, e.clientY, row, taskId);
+    const onMove = e => moveDrag(e.clientX, e.clientY);
+    const onUp   = e => { endDrag(e.clientX, e.clientY); document.removeEventListener('mousemove', onMove); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
   });
 
-  row.addEventListener('pointermove', e => {
-    if (!dragState || dragState.taskId !== taskId) return;
-    dragState.ghost.style.left = (e.clientX - dragState.ox) + 'px';
-    dragState.ghost.style.top  = (e.clientY - dragState.oy) + 'px';
-
-    document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
-    dragState.ghost.style.display = 'none';
-    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.col');
-    dragState.ghost.style.display = '';
-    if (target) target.classList.add('drag-over');
-  });
-
-  row.addEventListener('pointerup', async e => {
-    if (!dragState || dragState.taskId !== taskId) return;
-
-    dragState.ghost.style.display = 'none';
-    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.col');
-    dragState.ghost.style.display = '';
-
-    const newCol = target?.dataset.col;
-    dragState.ghost.remove();
-    dragState.row.style.opacity = '';
-    document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
-
-    const oldCol = tasks.find(t => t.id === taskId)?.col;
-    if (newCol && newCol !== oldCol) {
-      await tasksCol.doc(taskId).update({ col: newCol });
-    }
-    dragState = null;
-  });
-
-  row.addEventListener('pointercancel', () => {
-    if (!dragState || dragState.taskId !== taskId) return;
-    dragState.ghost.remove();
-    dragState.row.style.opacity = '';
-    document.querySelectorAll('.col').forEach(c => c.classList.remove('drag-over'));
-    dragState = null;
-  });
+  // Touch (iPad / iPhone)
+  row.addEventListener('touchstart', e => {
+    if (e.target.closest('input') || e.target.closest('.task-del')) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    startDrag(t.clientX, t.clientY, row, taskId);
+    const onMove = e => { e.preventDefault(); const t = e.touches[0]; moveDrag(t.clientX, t.clientY); };
+    const onEnd  = e => { const t = e.changedTouches[0]; endDrag(t.clientX, t.clientY); row.removeEventListener('touchmove', onMove); };
+    row.addEventListener('touchmove', onMove, { passive: false });
+    row.addEventListener('touchend',  onEnd,  { once: true });
+    row.addEventListener('touchcancel', cancelDrag, { once: true });
+  }, { passive: false });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
