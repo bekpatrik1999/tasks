@@ -283,13 +283,22 @@ function attachEvents() {
     };
   });
 
-  // Open task modal
+  // Open task modal — click (desktop) + touchend (iOS)
   document.querySelectorAll('.task-body').forEach(body => {
     body.onclick = () => {
       const id = body.closest('.task').dataset.id;
       openTaskId = id;
       renderModal(id);
     };
+    body.addEventListener('touchend', e => {
+      // dragState is set only when a real drag happened
+      if (!dragState) {
+        e.preventDefault();
+        const id = body.closest('.task').dataset.id;
+        openTaskId = id;
+        renderModal(id);
+      }
+    });
   });
 }
 
@@ -510,12 +519,6 @@ function initDrag(row, taskId) {
       if (dragging) {
         const t = e.changedTouches[0];
         endDrag(t.clientX, t.clientY);
-      } else {
-        // tap — open modal directly (don't rely on synthetic click)
-        if (!e.target.closest('input') && !e.target.closest('.task-del')) {
-          openTaskId = taskId;
-          renderModal(taskId);
-        }
       }
     };
     const onCancel = () => { row.removeEventListener('touchmove', onMove); if (dragging) cancelDrag(); };
